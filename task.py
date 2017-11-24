@@ -27,7 +27,7 @@ for host in host_list:
 		print("Failed to open for %s "%(host))
 	else:
 		conn_dict[host[name]] = conn
-		active_hosts.push(host[name])
+		active_hosts.append(host[name])
 
 for name in active_hosts:
 	print(conn_dict[name])
@@ -35,13 +35,20 @@ for name in active_hosts:
 
 #==================Get Stats for all domains at a host=================
 
+def printHostInfo(host_name):
+	memoryStats = conn_dict[host_name].getMemoryStats(libvirt.VIR_NODE_MEMORY_STATS_ALL_CELLS)
+	cpuStats = conn_dict[host_name].getCPUStats(libvirt.VIR_NODE_CPU_STATS_ALL_CPUS)
+	print("For %s : memoryStats = %s, cpuStats=%s"%(host_name,memoryStats,cpuStats))
+
 def getStats(host_name):
-	conn = conn_dict.get([host_name])
+	conn = conn_dict.get(host_name)
 	if conn == None:
 		print("unable to get stats for %s"%(node_name))
 		return
-	domainIds = conn.listDomainID()
-	
+	domainIds = conn.listDomainsID()
+	printHostInfo(host_name)
+	print("Domains : %s"%(domainIds))
+
 
 
 
