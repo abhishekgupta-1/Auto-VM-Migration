@@ -21,9 +21,14 @@ Fancy
 
 
 
+========================Precautions======================
+1. Use lowest common denominator for CPU configuration. See **cpu-baseline** command of virsh
+2. All the guests, even on different hosts, should have a unique name
+
+
+
 ========================QUESTIONS========================
 
 1. Push or pull mechanism?
-2. 
-
-
+2. How to connect guests to the network? How does bridge work? 
+Use **
