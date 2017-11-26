@@ -19,11 +19,9 @@ print('Number of errors:
 for (i, cpu) in enumerate(cpu_stats):
 print('CPU '+str(i)+' Time: '+str(cpu['cpu_time'] / 1000000000.))
 8. stats = dom.getCPUStats(True)
-print('cpu_time:
-'+str(stats[0]['cpu_time']))
+print('cpu_time:'+str(stats[0]['cpu_time']))
 print('system_time: '+str(stats[0]['system_time']))
-print('user_time:
-'+str(stats[0]['user_time']))
+print('user_time:'+str(stats[0]['user_time']))
 9. stats = dom.memoryStats()
 print('memory used:')
 for name in stats:
@@ -49,6 +47,11 @@ print('write drops:
 
 
 ## Notes
+
+### Time
+1. The total CPU time is the combination of the amount of time the CPU or CPUs spent performing some action for a program and the amount of time they spent performing system calls for the kernel on the program's behalf. When a program loops through an array, it is accumulating user CPU time. Conversely, when a program executes a system call such as exec or fork, it is accumulating system CPU time.
+2. The term "real time" in this context refers to elapsed wall-clock time, like using a stop watch. The total CPU time (user time + sys time) may be more or less than that value. Because a program may spend some time waiting and not executing at all (whether in user mode or system mode) the real time may be greater than the total CPU time. Because a program may fork children whose CPU times (both user and sys) are added to the values reported by the time command, but on a multicore system these tasks are run in parallel, the total CPU time may be greater than the real time.
+
 
 ### Hypervisor connection
 1. A connection is the primary or top level object in the libvirt API and Python libvirt module. An instance of this object is required before attempting to use almost any of the classes or methods. A connection is associated with a particular hypervisor, which may be running locally on the same machine as the libvirt client application, or on a remote machine over the network. In all cases, the connection is represented by an instance of the virConnect class and identified by a URI. The URI scheme and path defines the hypervisor to connect to, while the host part of the URI determines where it is located.
