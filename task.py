@@ -6,6 +6,8 @@ import sys
 import libvirt
 import time
 import thread
+from xml.etree import ElementTree
+
 #uri - qemu+ssh://uname@ipaddr/system
 
 user_name = "user_name"
@@ -14,7 +16,7 @@ name = "name"
 protocol = "qemu+ssh://"
 hotspot_detect_interval = 3
 utilization_interval = 5
-domain_interval = 0.01
+domain_interval = 1
 host_list = [{user_name : "FDUSER", ip_address : "172.18.16.69", name : "node2"}
 ,{user_name : "FDUSER", ip_address : "172.18.16.13", name : "node3"}
 ,{user_name : "abhu", ip_address : "127.0.0.1", name : "rocknode"}
@@ -98,8 +100,7 @@ def hotspot_detector(host_name):
 		t4 = time.time()
 		util = getCPUUtil(new_stats, prev_stats, t2-t1+t4-t3)
 
-		print(host_name, util)
-		
+		print(host_name, util, "\n--------------------\n")
 		if len(window) == window_size:
 			if window[0] > cpu_threshold:
 				k_val -= 1
@@ -108,7 +109,7 @@ def hotspot_detector(host_name):
 		if util > cpu_threshold:
 			k_val += 1
 		if k_val > k_thres:
-			print("Hotspot detected at %s"%(host_name))
+			print("\n=============Hotspot detected at %s======================\n"%(host_name))
 			thread.start_new_thread(find_domain, (host_name,))
 			#Create a new thread to find VMs domains, which domain
 		time.sleep(hotspot_detect_interval)
@@ -140,7 +141,7 @@ def getdomCPUUtil(new_stats, prev_stats, additional_time):
 	for ite in lis:
 		prev_sum += prev_stats[ite]
 		new_sum += new_stats[ite]
-	util = (new_sum-prev_sum)/((domain_interval)*10000000.)
+	util = (new_sum-prev_sum)/((domain_interval+additional_time)*10000000.)
 	return util
 	
 
@@ -154,7 +155,14 @@ def getMemoryUtil(new_mem_stats, prev_mem_stats, additional_time):
 	memory_util = (new_mem + old_mem) / 2.0	
 	return memory_util
 
-
+def getNetworkUtil(new_network_stats, prev_network_stats, additional_time):
+	new_net = new_network_stats[0]+new_network_stats[4]
+	old_net = prev_network_stats[0]+prev_network_stats[4]
+	# print('memory used:')
+	#for name in stats:
+		# print('  '+str(stats[name])+' ('+name+')')
+	#	memory_stats += stats[name]
+	return (new_net - old_net)/(domain_interval+additional_time)
 
 def find_domain(host_name):
 	conn = conn_dict[host_name]
@@ -166,6 +174,7 @@ def find_domain(host_name):
 		dom_cache = {}
 		num_of_times = 5
 		val = {}
+		
 		for _ in range(num_of_times):
 			for domainID in domainIDs:
 				dom = dom_cache.get(domainID)
@@ -175,30 +184,33 @@ def find_domain(host_name):
 				if dom == None:
 				    print('Failed to find the domain ', file=sys.stderr)
 				    exit(1)
-
-				
+				tree = ElementTree.fromstring(dom.XMLDesc())
+				iface = tree.find('devices/interface/target').get('dev')
 				prev_cpu_time_sum = 0
 				new_cpu_time_sum = 0
 				prev_memory_stats = 0
 				new_memory_stats = 0
-
+				
 				prev_cpu_stats = dom.getCPUStats(True)
 				prev_mem_stats  = dom.memoryStats()
-				
+				prev_network_stats = dom.interfaceStats(iface)				
+
 				time.sleep(domain_interval)
 				
 				new_cpu_stats = dom.getCPUStats(True)
 				new_mem_stats = dom.memoryStats()
-				
+				new_network_stats = dom.interfaceStats(iface)
+
 				cpu_util = getdomCPUUtil(new_cpu_stats[0], prev_cpu_stats[0], 0.2)
 				mem_util = getMemoryUtil(new_mem_stats, prev_mem_stats, 0.2)
-
+				network_util = getNetworkUtil(new_network_stats, prev_network_stats, 0.2 )
 
 				if val.get(domainID) == None:
-					val[domainID] = {'mem': [], 'cpu' : []}
+					val[domainID] = {'mem': [], 'cpu' : [], "network": []}
 
 				val[domainID]['mem'].append(mem_util)
 				val[domainID]['cpu'].append(cpu_util)
+				val[domainID]['network'].append(network_util)
 
 		averages = {}
 		for domainID in val:
