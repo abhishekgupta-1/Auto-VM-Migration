@@ -21,7 +21,7 @@ host_list = [{user_name : "FDUSER", ip_address : "172.18.16.69", name : "node2"}
 ,{user_name : "FDUSER", ip_address : "172.18.16.13", name : "node3"}
 ,{user_name : "abhu", ip_address : "127.0.0.1", name : "rocknode"}
 ]
-
+host_stats = {}
 # host_list = [{user_name : "FDUSER", ip_address : "172.18.16.13", name : "node3"},]
 
 window_size = 10
@@ -46,83 +46,61 @@ for name in conn_dict:
 	print(name, "=>", conn_dict[name])
 
 
-#=================================Utility===============================
 
-def printHostStats(host_name):
-	conn = conn_dict.get(host_name)
-	if conn == None:
-		print("unable to get stats for %s"%(node_name))
-		return
-	domainIds = conn.listDomainsID()
-	print("Domains : %s"%(domainIds))
-	memoryStats = conn.getMemoryStats(libvirt.VIR_NODE_MEMORY_STATS_ALL_CELLS)
-	cpuStats = conn.getCPUStats(libvirt.VIR_NODE_CPU_STATS_ALL_CPUS)
-	print("For %s : memoryStats = %s, cpuStats=%s"%(host_name,memoryStats,cpuStats))
-
-
-#===========================Main=======================================
-#TODO: Run a separate thread for getting getStats for each host
-# while True:
-# 	for host_name in conn_dict:
-# 		# printHostStats(host_name)
-# 		# print("================")
-# 		#Check for hotspots
-
-		
-# 		# domains = conn_dict[host_name].listAllDomains(libvirt.VIR_CONNECT_LIST_DOMAINS_ACTIVE)
-# 		# print(domains)
-# 		# for dom in domains:
-# 		# 	stats = dom.getCPUStats(True)
-# 		# 	print("dom-name:"+dom.name())
-# 		# 	print("dom-id:"+str(dom.ID()))
-# 		# 	print('cpu-time:'+str(stats[0]['cpu_time']))
-# 		# 	print('system-time:'+str(stats[0]['system_time']))
-# 		# 	print('user_time:'+str(stats[0]['user_time']))
-# 		# 	print("=================")
-# 		# print("=================================================================")
-		
-# 	time.sleep(hotspot_detect_interval)
-
-
-
+hotspot_domain = 0
 
 def hotspot_detector(host_name):
 	conn = conn_dict[host_name]
 	window = []
 	k_val = 0
-	while True:
-		t1 = time.time()
-		prev_stats = conn.getCPUStats(libvirt.VIR_NODE_CPU_STATS_ALL_CPUS)
-		t2 = time.time()
-		time.sleep(utilization_interval)
-		t3 = time.time()
-		new_stats = conn.getCPUStats(libvirt.VIR_NODE_CPU_STATS_ALL_CPUS)
-		t4 = time.time()
-		util = getCPUUtil(new_stats, prev_stats, t2-t1+t4-t3)
+	t1 = time.time()
+	prev_stats = conn.getCPUStats(libvirt.VIR_NODE_CPU_STATS_ALL_CPUS)
+	t2 = time.time()
+	time.sleep(utilization_interval)
+	t3 = time.time()
+	new_stats = conn.getCPUStats(libvirt.VIR_NODE_CPU_STATS_ALL_CPUS)
+	t4 = time.time()
+	util = getCPUUtil(new_stats, prev_stats, t2-t1+t4-t3)
 
-		print(host_name, util, "\n--------------------\n")
-		if len(window) == window_size:
-			if window[0] > cpu_threshold:
-				k_val -= 1
-			window = window[1:]
-		window.append(util)
-		if util > cpu_threshold:
-			k_val += 1
-		if k_val > k_thres:
-			print("\n=============Hotspot detected at %s======================\n"%(host_name))
-			thread.start_new_thread(find_domain, (host_name,))
-			#Create a new thread to find VMs domains, which domain
-		time.sleep(hotspot_detect_interval)
+	print(host_name, util, "\n--------------------\n")
+	if len(window) == window_size:
+		if window[0] > cpu_threshold:
+			k_val -= 1
+		window = window[1:]
+	window.append(util)
+	if util > cpu_threshold:
+		k_val += 1
+	hotspot = False
+	if k_val > k_thres:
+		hotspot = True
+		print("\n================  Hotspot detected at %s  ======================\n"%(host_name))
+		#thread.start_new_thread(find_domain, (host_name,))
+		#Create a new thread to find VMs domains, which domain
+	score = 0
+	alpha = 0.8
+	lengt = len(window)
+	for i in range(lengt):
+		score += alpha * window[lengt-1-i]
+	host_stats[host_name] = {"score":score, "window":window,"hotspot":hotspot} 
 
+while True:
+	ls = []
+	for host_name in conn_dict:
+		try:
+			# 	hotspot_detector(host_name)
+			ls.append(thread.start_new_thread(hotspot_detector, (host_name,)))
+		except:
+			print("Unable to run hotspot detector thread %s"%(host_name))
+			raise
+	for th in ls:
+		th.join()
+	for host in host_stats:
+		host_stat = host_stats[host]
+		if host_stat['hotspot']:
+			thread.start_new_thread(find_domain, (host,))
+		# else:
+	time.sleep(hotspot_detect_interval)
 
-for host_name in conn_dict:
-	try:
-		# hotspot_detector(host_name)
-		thread.start_new_thread(hotspot_detector, (host_name,))
-		
-	except:
-		print("Unable to run hotspot detector thread %s"%(host_name))
-		raise
 
 def getCPUUtil(new_stats, prev_stats, additional_time):
 	lis = ['user', 'kernel']
@@ -156,8 +134,8 @@ def getMemoryUtil(new_mem_stats, prev_mem_stats, additional_time):
 	return memory_util
 
 def getNetworkUtil(new_network_stats, prev_network_stats, additional_time):
-	new_net = new_network_stats[0]+new_network_stats[4]
-	old_net = prev_network_stats[0]+prev_network_stats[4]
+	new_net = new_network_stats[1]+new_network_stats[5]
+	old_net = prev_network_stats[1]+prev_network_stats[5]
 	# print('memory used:')
 	#for name in stats:
 		# print('  '+str(stats[name])+' ('+name+')')
