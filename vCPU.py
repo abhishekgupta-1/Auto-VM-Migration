@@ -3,6 +3,7 @@ import sys
 import libvirt
 from threading import Timer
 import time
+
 def getCPUStats(cpu_stats):
 	cpu_time_sum = 0
 	for (i, cpu) in enumerate(cpu_stats):
@@ -16,8 +17,8 @@ def getMemoryStats(stats):
 	for name in stats:
 		print('  '+str(stats[name])+' ('+name+')')
 		memory_stats += stats[name]	
-	return memory_stats
-
+	return memory_stat
+s
 if len(sys.argv) == 1:
 	conn = libvirt.open('qemu:///system')
 else:
@@ -43,20 +44,18 @@ else:
 		new_cpu_time_sum = 0
 		prev_memory_stats = 0
 		new_memory_stats = 0
-		cpu_stats = dom.getCPUStats(False)
+
+		cpu_stats = dom.getCPUStats(True)
 		stats  = dom.memoryStats()
-		t1 = time.time()
+
 		prev_cpu_time_sum = getCPUTimeSum(cpu_stats)
 		prev_memory_stats = getMemoryStats(stats)
-		print('memory used:')
-		for name in stats:
-		    print('  '+str(stats[name])+' ('+name+')')
-		    prev_memory_stats += stats[name]
 		
-		# print("Interval of", interval, "seconds")
-		# time.sleep(interval)
+		print("Interval of", interval, "seconds")
+		time.sleep(interval)
 
-		cpu_stats = dom.getCPUStats(False)
+		cpu_stats = dom.getCPUStats(True)
+		
 		for (i, cpu) in enumerate(cpu_stats):
 		   print('CPU '+str(i)+' Time: '+str(cpu['cpu_time'] / 1000000000.))
 		   new_cpu_time_sum += cpu['cpu_time'] 
