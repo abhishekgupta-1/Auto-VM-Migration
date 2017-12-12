@@ -83,6 +83,32 @@ def hotspot_detector(host_name):
 		score += alpha * window[lengt-1-i]
 	host_stats[host_name] = {"score":score, "window":window,"hotspot":hotspot} 
 
+
+def filterDomain(domainInfos, filterType):#Max - Max VSR, Min otherwise
+	aggregates = {}
+	host_min = -1
+	aggr_min = 100000000
+	host_max = -1
+	aggr_max = -1
+	for dom in domainInfos:
+		vals = domainInfos[dom]
+		aggr_val = 1
+		for x in vals:
+			aggr_val *= vals[x]
+		if aggr_val < aggr_min:
+			aggr_min = aggr_val
+			host_min = dom
+		if aggr_val > aggr_max:
+			aggr_max = aggr_val
+			host_max = dom
+	if filterType == True:
+		return host_max
+	return host_min
+			
+
+
+
+
 while True:
 	ls = []
 	for host_name in conn_dict:
@@ -97,7 +123,26 @@ while True:
 	for host in host_stats:
 		host_stat = host_stats[host]
 		if host_stat['hotspot']:
-			thread.start_new_thread(find_domain, (host,))
+			domain_info_hotspot = find_domain(host)
+			dom_tobe = filterDomain(domain_info_hotspot, True)
+			min_sc = 1000000
+			host_nam = -1
+			for host in host_stats:
+				if host_stats[host]['hotspot'] == False and host_stats[host].get('marked') == None:
+					if host_stats[host]['score'] < min_sc:
+						min_sc = host_stats[host]['score']
+						host_nam = host_name
+			host_stats[host_nam]['marked'] = True
+			domain_info_repl = find_domain(host_nam)
+			dom_with = filterDomain(domain_info_repl, False)
+			#Do migrate
+			conn_hotspot = conn_dict[host]
+			conn_minload = conn_dict[host_nam]
+			print("Migration of %d with %d", (dom_tobe,dom_with))
+			dom_tobe = conn_hotspot.lookupByID(dom_tobe)
+			dom_with = conn_minload.lookupByID(dom_with)
+			dom_tobe.migrate(conn_minload, 0, None, None, 0)
+			dom_with.migrate(conn_hotspot, 0, None, None, 0)
 		# else:
 	time.sleep(hotspot_detect_interval)
 
@@ -122,7 +167,6 @@ def getdomCPUUtil(new_stats, prev_stats, additional_time):
 	util = (new_sum-prev_sum)/((domain_interval+additional_time)*10000000.)
 	return util
 	
-
 def getMemoryUtil(new_mem_stats, prev_mem_stats, additional_time):
 	new_mem = new_mem_stats['rss']
 	old_mem = prev_mem_stats['rss']
@@ -147,6 +191,7 @@ def find_domain(host_name):
 	domainIDs = conn.listDomainsID()
 	if len(domainIDs) == 0:
 		print('None')
+		return {}
 		exit(0)
 	else:
 		dom_cache = {}
@@ -202,6 +247,7 @@ def find_domain(host_name):
 				res[typ] = y/float(num_of_times)
 			averages[domainID] = res
 		print(averages)
+		return averages
 
 
 
