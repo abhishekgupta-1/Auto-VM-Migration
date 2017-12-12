@@ -20,7 +20,7 @@ utilization_interval = 5
 domain_interval = 1
 host_list = [{user_name : "FDUSER", ip_address : "172.18.16.69", name : "node2"}
 ,{user_name : "FDUSER", ip_address : "172.18.16.13", name : "node3"}
-,{user_name : "abhu", ip_address : "127.0.0.1", name : "rocknode"}
+#,{user_name : "abhu", ip_address : "127.0.0.1", name : "rocknode"}
 ]
 host_stats = {}
 # host_list = [{user_name : "FDUSER", ip_address : "172.18.16.13", name : "node3"},]
@@ -28,7 +28,7 @@ host_stats = {}
 window_size = 10
 k_thres = 1
 k_val = {}
-
+window_dict = {}
 conn_dict = {}
 
 cpu_threshold = 2
@@ -94,7 +94,10 @@ def getNetworkUtil(new_network_stats, prev_network_stats, additional_time):
 
 def hotspot_detector(host_name):
 	conn = conn_dict[host_name]
-	window = []
+	window = window_dict.get(host_name)
+	if window == None:
+		window_dict[host_name] = []
+		window = []
 	k_va = k_val.get(host_name)
 	if k_va == None:
 		k_val[host_name] = 0
@@ -113,6 +116,7 @@ def hotspot_detector(host_name):
 			k_val[host_name] -= 1
 		window = window[1:]
 	window.append(util)
+	window_dict[host_name] = window
 	if util > cpu_threshold:
 		k_val[host_name] += 1
 	hotspot = False
@@ -138,8 +142,9 @@ def filterDomain(domainInfos, filterType):#Max - Max VSR, Min otherwise
 	for dom in domainInfos:
 		vals = domainInfos[dom]
 		aggr_val = 1
-		for x in vals:
+		for x in vals: #VSR Calculation
 			aggr_val *= vals[x]
+		aggr_val /= 10000000
 		if aggr_val < aggr_min:
 			aggr_min = aggr_val
 			host_min = dom
@@ -243,20 +248,25 @@ while True:
 		if host_stat['hotspot']:
 			domain_info_hotspot = find_domain(host)
 			dom_tobe = filterDomain(domain_info_hotspot, True)
-			min_sc = 1000000
+			if dom_tobe == -1:
+				continue
+			min_sc = 10000000
 			host_nam = -1
 			for host1 in host_stats:
 				if host_stats[host1]['hotspot'] == False and host_stats[host1].get('marked') == None:
 					if host_stats[host1]['score'] < min_sc:
 						min_sc = host_stats[host1]['score']
-						host_nam = host_name
+						host_nam = host1
+			if host_nam == -1:
+				print("Unable to find minload node for overload %s"%(host))
+				continue
 			host_stats[host_nam]['marked'] = True
 			domain_info_repl = find_domain(host_nam)
 			dom_with = filterDomain(domain_info_repl, False)
 			#Do migrate
 			conn_hotspot = conn_dict[host]
 			conn_minload = conn_dict[host_nam]
-			print("Migration of %d with %d", (dom_tobe,dom_with))
+			print("Migration of %d at %s with %d at %s"%(dom_tobe,host,dom_with,host_nam))
 			dom_tobe = conn_hotspot.lookupByID(dom_tobe)
 			if dom_with != -1:
 				dom_with = conn_minload.lookupByID(dom_with)
