@@ -27,10 +27,11 @@ host_stats = {}
 
 window_size = 10
 k_thres = 1
+k_val = {}
 
 conn_dict = {}
 
-cpu_threshold = 70
+cpu_threshold = 2
 
 
 #========================Setup Connection=============================
@@ -49,105 +50,6 @@ for name in conn_dict:
 
 
 hotspot_domain = 0
-
-def hotspot_detector(host_name):
-	conn = conn_dict[host_name]
-	window = []
-	k_val = 0
-	t1 = time.time()
-	prev_stats = conn.getCPUStats(libvirt.VIR_NODE_CPU_STATS_ALL_CPUS)
-	t2 = time.time()
-	time.sleep(utilization_interval)
-	t3 = time.time()
-	new_stats = conn.getCPUStats(libvirt.VIR_NODE_CPU_STATS_ALL_CPUS)
-	t4 = time.time()
-	util = getCPUUtil(new_stats, prev_stats, t2-t1+t4-t3)
-
-	print(host_name, util, "\n--------------------\n")
-	if len(window) == window_size:
-		if window[0] > cpu_threshold:
-			k_val -= 1
-		window = window[1:]
-	window.append(util)
-	if util > cpu_threshold:
-		k_val += 1
-	hotspot = False
-	if k_val > k_thres:
-		hotspot = True
-		print("\n================  Hotspot detected at %s  ======================\n"%(host_name))
-		#thread.start_new_thread(find_domain, (host_name,))
-		#Create a new thread to find VMs domains, which domain
-	score = 0
-	alpha = 0.8
-	lengt = len(window)
-	for i in range(lengt):
-		score += alpha * window[lengt-1-i]
-	host_stats[host_name] = {"score":score, "window":window,"hotspot":hotspot} 
-
-
-def filterDomain(domainInfos, filterType):#Max - Max VSR, Min otherwise
-	aggregates = {}
-	host_min = -1
-	aggr_min = 100000000
-	host_max = -1
-	aggr_max = -1
-	for dom in domainInfos:
-		vals = domainInfos[dom]
-		aggr_val = 1
-		for x in vals:
-			aggr_val *= vals[x]
-		if aggr_val < aggr_min:
-			aggr_min = aggr_val
-			host_min = dom
-		if aggr_val > aggr_max:
-			aggr_max = aggr_val
-			host_max = dom
-	if filterType == True:
-		return host_max
-	return host_min
-			
-
-
-
-
-while True:
-	ls = []
-	for host_name in conn_dict:
-		try:
-			# 	hotspot_detector(host_name)
-			th = threading.Thread(target=hotspot_detector, args=(host_name,))
-			ls.append(th)
-			th.start()
-		except:
-			print("Unable to run hotspot detector thread %s"%(host_name))
-			raise
-	for th in ls:
-		th.join()
-	for host in host_stats:
-		host_stat = host_stats[host]
-		if host_stat['hotspot']:
-			domain_info_hotspot = find_domain(host)
-			dom_tobe = filterDomain(domain_info_hotspot, True)
-			min_sc = 1000000
-			host_nam = -1
-			for host in host_stats:
-				if host_stats[host]['hotspot'] == False and host_stats[host].get('marked') == None:
-					if host_stats[host]['score'] < min_sc:
-						min_sc = host_stats[host]['score']
-						host_nam = host_name
-			host_stats[host_nam]['marked'] = True
-			domain_info_repl = find_domain(host_nam)
-			dom_with = filterDomain(domain_info_repl, False)
-			#Do migrate
-			conn_hotspot = conn_dict[host]
-			conn_minload = conn_dict[host_nam]
-			print("Migration of %d with %d", (dom_tobe,dom_with))
-			dom_tobe = conn_hotspot.lookupByID(dom_tobe)
-			dom_with = conn_minload.lookupByID(dom_with)
-			dom_tobe.migrate(conn_minload, 0, None, None, 0)
-			dom_with.migrate(conn_hotspot, 0, None, None, 0)
-		# else:
-	time.sleep(hotspot_detect_interval)
 
 
 def getCPUUtil(new_stats, prev_stats, additional_time):
@@ -188,6 +90,72 @@ def getNetworkUtil(new_network_stats, prev_network_stats, additional_time):
 		# print('  '+str(stats[name])+' ('+name+')')
 	#	memory_stats += stats[name]
 	return (new_net - old_net)/(domain_interval+additional_time)
+
+
+def hotspot_detector(host_name):
+	conn = conn_dict[host_name]
+	window = []
+	k_va = k_val.get(host_name)
+	if k_va == None:
+		k_val[host_name] = 0
+	t1 = time.time()
+	prev_stats = conn.getCPUStats(libvirt.VIR_NODE_CPU_STATS_ALL_CPUS)
+	t2 = time.time()
+	time.sleep(utilization_interval)
+	t3 = time.time()
+	new_stats = conn.getCPUStats(libvirt.VIR_NODE_CPU_STATS_ALL_CPUS)
+	t4 = time.time()
+	util = getCPUUtil(new_stats, prev_stats, t2-t1+t4-t3)
+
+	print(host_name, util, "\n--------------------\n")
+	if len(window) == window_size:
+		if window[0] > cpu_threshold:
+			k_val[host_name] -= 1
+		window = window[1:]
+	window.append(util)
+	if util > cpu_threshold:
+		k_val[host_name] += 1
+	hotspot = False
+	if k_val[host_name] > k_thres:
+		hotspot = True
+		print("\n================  Hotspot detected at %s  ======================\n"%(host_name))
+		#thread.start_new_thread(find_domain, (host_name,))
+		#Create a new thread to find VMs domains, which domain
+	score = 0
+	alpha = 0.8
+	lengt = len(window)
+	for i in range(lengt):
+		score += alpha * window[lengt-1-i]
+	host_stats[host_name] = {"score":score, "window":window,"hotspot":hotspot} 
+
+
+def filterDomain(domainInfos, filterType):#Max - Max VSR, Min otherwise
+	aggregates = {}
+	host_min = -1
+	aggr_min = 100000000
+	host_max = -1
+	aggr_max = -1
+	for dom in domainInfos:
+		vals = domainInfos[dom]
+		aggr_val = 1
+		for x in vals:
+			aggr_val *= vals[x]
+		if aggr_val < aggr_min:
+			aggr_min = aggr_val
+			host_min = dom
+		if aggr_val > aggr_max:
+			aggr_max = aggr_val
+			host_max = dom
+	if filterType == True:
+		return host_max
+	return host_min
+			
+
+
+
+
+
+
 
 def find_domain(host_name):
 	conn = conn_dict[host_name]
@@ -255,6 +223,48 @@ def find_domain(host_name):
 
 
 
+
+while True:
+	ls = []
+	for host_name in conn_dict:
+		try:
+			# 	hotspot_detector(host_name)
+			th = threading.Thread(target=hotspot_detector, args=(host_name,))
+			ls.append(th)
+			th.start()
+		except:
+			print("Unable to run hotspot detector thread %s"%(host_name))
+			raise
+	for th in ls:
+		th.join()
+	print(host_stats)
+	for host in host_stats:
+		host_stat = host_stats[host]
+		if host_stat['hotspot']:
+			domain_info_hotspot = find_domain(host)
+			dom_tobe = filterDomain(domain_info_hotspot, True)
+			min_sc = 1000000
+			host_nam = -1
+			for host1 in host_stats:
+				if host_stats[host1]['hotspot'] == False and host_stats[host1].get('marked') == None:
+					if host_stats[host1]['score'] < min_sc:
+						min_sc = host_stats[host1]['score']
+						host_nam = host_name
+			host_stats[host_nam]['marked'] = True
+			domain_info_repl = find_domain(host_nam)
+			dom_with = filterDomain(domain_info_repl, False)
+			#Do migrate
+			conn_hotspot = conn_dict[host]
+			conn_minload = conn_dict[host_nam]
+			print("Migration of %d with %d", (dom_tobe,dom_with))
+			dom_tobe = conn_hotspot.lookupByID(dom_tobe)
+			if dom_with != -1:
+				dom_with = conn_minload.lookupByID(dom_with)
+			dom_tobe.migrate(conn_minload, 0, None, None, 0)
+			if dom_with != -1:
+				dom_with.migrate(conn_hotspot, 0, None, None, 0)
+		# else:
+	time.sleep(hotspot_detect_interval)
 
 
 
