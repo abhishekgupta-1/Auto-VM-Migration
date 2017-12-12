@@ -7,6 +7,7 @@ import libvirt
 import time
 import thread
 from xml.etree import ElementTree
+import threading
 
 #uri - qemu+ssh://uname@ipaddr/system
 
@@ -114,7 +115,9 @@ while True:
 	for host_name in conn_dict:
 		try:
 			# 	hotspot_detector(host_name)
-			ls.append(thread.start_new_thread(hotspot_detector, (host_name,)))
+			th = threading.Thread(target=hotspot_detector, args=(host_name,))
+			ls.append(th)
+			th.start()
 		except:
 			print("Unable to run hotspot detector thread %s"%(host_name))
 			raise
