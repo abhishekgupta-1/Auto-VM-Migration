@@ -15,9 +15,7 @@ user_name = "user_name"
 ip_address = "ip_addr"
 name = "name"
 protocol = "qemu+ssh://"
-hotspot_detect_interval = 3
-utilization_interval = 5
-domain_interval = 1
+
 host_list = [{user_name : "FDUSER", ip_address : "172.18.16.69", name : "node2"}
 ,{user_name : "FDUSER", ip_address : "172.18.16.13", name : "node3"}
 #,{user_name : "abhu", ip_address : "127.0.0.1", name : "rocknode"}
@@ -25,14 +23,21 @@ host_list = [{user_name : "FDUSER", ip_address : "172.18.16.69", name : "node2"}
 host_stats = {}
 # host_list = [{user_name : "FDUSER", ip_address : "172.18.16.13", name : "node3"},]
 
+hotspot_detect_interval = 3
+utilization_interval = 5
+domain_interval = 1
+# DEBUG
+# window_size = 10
+# k_thres = 1
 window_size = 10
-k_thres = 1
+k_thres = 5
+
 k_val = {}
 window_dict = {}
 conn_dict = {}
-
-cpu_threshold = 2
-
+#DEBUG
+# cpu_threshold = 2
+cpu_threshold = 90
 
 #========================Setup Connection=============================
 
@@ -73,8 +78,8 @@ def getdomCPUUtil(new_stats, prev_stats, additional_time):
 	return util
 	
 def getMemoryUtil(new_mem_stats, prev_mem_stats, additional_time):
-	new_mem = new_mem_stats['rss']
-	old_mem = prev_mem_stats['rss']
+	new_mem = new_mem_stats['rss']/new_mem_stats['actual']
+	old_mem = prev_mem_stats['rss']/prev_mem_stats['actual']
 	# print('memory used:')
 	#for name in stats:
 		# print('  '+str(stats[name])+' ('+name+')')
@@ -155,11 +160,6 @@ def filterDomain(domainInfos, filterType):#Max - Max VSR, Min otherwise
 		return host_max
 	return host_min
 			
-
-
-
-
-
 
 
 def find_domain(host_name):
@@ -266,11 +266,11 @@ while True:
 			#Do migrate
 			conn_hotspot = conn_dict[host]
 			conn_minload = conn_dict[host_nam]
-			print("Migration of %d at %s with %d at %s"%(dom_tobe,host,dom_with,host_nam))
+			print("\n================ Migration of %d at %s with %d at %s =======================\n"%(dom_tobe,host,dom_with,host_nam))
 			dom_tobe = conn_hotspot.lookupByID(dom_tobe)
 			if dom_with != -1:
 				dom_with = conn_minload.lookupByID(dom_with)
-			dom_tobe.migrate(conn_minload, 0, None, None, 0)
+			dom_tobe.migrate(conn_minload, libvirt.VIR_MIGRATE_LIVE, None, None, 0)
 			if dom_with != -1:
 				dom_with.migrate(conn_hotspot, 0, None, None, 0)
 		# else:
